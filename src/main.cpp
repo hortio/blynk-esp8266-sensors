@@ -3,10 +3,14 @@
 #include <credentials.h>
 // copy src/credentials_example.h to src/credentials.h and put your data to the file
 
-#include <ESP8266WiFi.h>            // https://github.com/esp8266/Arduino
-#include <BlynkSimpleEsp8266_SSL.h> // https://github.com/blynkkk/blynk-library
-#include <ESP8266httpUpdate.h>      // https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266httpUpdate
-#include <Ticker.h>                 // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
+#include <ESP8266WiFi.h>        // https://github.com/esp8266/Arduino
+#include <BlynkSimpleEsp8266.h> // https://github.com/blynkkk/blynk-library
+#include <ESP8266httpUpdate.h>  // https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266httpUpdate
+#include <Ticker.h>             // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
+
+// Sensors
+#include <Wire.h>
+#include <Adafruit_BME280.h>
 
 #define DEBUG_SERIAL Serial
 
@@ -16,9 +20,86 @@ const char fw_ver[] = FW_VERSION;
 
 const char outPins[] = OUTPUT_PINS;
 
+bool shouldSendData{false};
+Ticker dataSender;
+
+// Sensors
+
+Adafruit_BME280 bme;
+
+void setSendDataFlag()
+{
+        shouldSendData = true;
+}
+
+void sendData()
+{
+        float airTemperature{0};
+        airTemperature = bme.readTemperature();
+        Blynk.virtualWrite(V0, airTemperature);
+        DEBUG_SERIAL.print("Air Temperature (C): ");
+        DEBUG_SERIAL.println(airTemperature);
+
+        float airHumidity{0};
+        airHumidity = bme.readHumidity();
+        Blynk.virtualWrite(V1, airHumidity);
+        DEBUG_SERIAL.print("Air Humidity (%): ");
+        DEBUG_SERIAL.println(airHumidity);
+
+        float airPressure{0};
+        airPressure = bme.readPressure() / 100.0F;
+        DEBUG_SERIAL.print("Air Pressure (hPa): ");
+        DEBUG_SERIAL.println(airPressure);
+
+        shouldSendData = false;
+}
+
+void scanI2C()
+{
+        byte error, address;
+        int nDevices;
+
+        DEBUG_SERIAL.println("Scanning...");
+
+        nDevices = 0;
+        for (address = 1; address < 127; address++)
+        {
+                // The i2c_scanner uses the return value of
+                // the Write.endTransmisstion to see if
+                // a device did acknowledge to the address.
+                Wire.beginTransmission(address);
+                error = Wire.endTransmission();
+
+                if (error == 0)
+                {
+                        DEBUG_SERIAL.print("I2C device found at address 0x");
+                        if (address < 16)
+                                DEBUG_SERIAL.print("0");
+                        DEBUG_SERIAL.print(address, HEX);
+                        DEBUG_SERIAL.println("  !");
+
+                        nDevices++;
+                }
+                else if (error == 4)
+                {
+                        DEBUG_SERIAL.print("Unknown error at address 0x");
+                        if (address < 16)
+                                DEBUG_SERIAL.print("0");
+                        DEBUG_SERIAL.println(address, HEX);
+                }
+        }
+        if (nDevices == 0)
+                DEBUG_SERIAL.println("No I2C devices found\n");
+        else
+                DEBUG_SERIAL.println("done\n");
+}
+
 void setup()
 {
         DEBUG_SERIAL.begin(115200);
+
+        Wire.begin(I2C_SDA, I2C_SCL);
+        scanI2C();
 
         // Connections
         DEBUG_SERIAL.println("Connecting to WiFI");
@@ -40,11 +121,23 @@ void setup()
                 pinMode(outPins[i], OUTPUT);
                 digitalWrite(outPins[i], LOW);
         }
+
+        if (!bme.begin(BME280_ADDR))
+        {
+                DEBUG_SERIAL.println("BME280 not found");
+        }
+
+        // Timers;
+        dataSender.attach(5.0, setSendDataFlag);
 }
 
 void loop()
 {
         Blynk.run();
+        if (shouldSendData)
+        {
+                sendData();
+        }
 }
 
 // Sync state on reconnect

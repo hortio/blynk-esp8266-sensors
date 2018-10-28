@@ -4,8 +4,20 @@
 #define DEVICE_ID "test_device"
 #endif
 
-#ifndef FW_VERSIONs
+#ifndef FW_VERSION
 #define FW_VERSION "0.0.1"
+#endif
+
+#ifndef I2C_SCL
+#define I2C_SCL 4
+#endif
+
+#ifndef I2C_SDA
+#define I2C_SDA 5
+#endif
+
+#ifndef BME280_ADDR
+#define BME280_ADDR 0x76
 #endif
 
 #ifndef OUTPUT_PINS

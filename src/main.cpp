@@ -3,19 +3,18 @@
 #include <credentials.h>
 // copy src/credentials_example.h to src/credentials.h and put your data to the file
 
-#include <ESP8266WiFi.h>        // https://github.com/esp8266/Arduino
-#include <BlynkSimpleEsp8266.h> // https://github.com/blynkkk/blynk-library
-#include <ESP8266httpUpdate.h>  // https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266httpUpdate
-#include <Ticker.h>             // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
+#include <ESP8266WiFi.h>            // https://github.com/esp8266/Arduino
+#include <BlynkSimpleEsp8266_SSL.h> // https://github.com/blynkkk/blynk-library
+#include <ESP8266httpUpdate.h>      // https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266httpUpdate
+#include <Ticker.h>                 // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
 
 #define DEBUG_SERIAL Serial
 
 // Config
-const uint16_t blynk_port{8442};
-const char device_id[] = "ku_watering";
-const char fw_ver[] = "0.0.1";
+const char device_id[] = DEVICE_ID;
+const char fw_ver[] = FW_VERSION;
 
-const char outPins[] = {D1};
+const char outPins[] = OUTPUT_PINS;
 
 void setup()
 {
@@ -26,7 +25,7 @@ void setup()
         Blynk.connectWiFi(WIFI_SSID, WIFI_PASS);
 
         DEBUG_SERIAL.println("\nConnecting to Blynk server");
-        Blynk.config(BLYNK_AUTH, BLYNK_SERVER, blynk_port);
+        Blynk.config(BLYNK_AUTH, BLYNK_SERVER, BLYNK_PORT);
         while (Blynk.connect() == false)
         {
                 delay(500);
@@ -40,7 +39,8 @@ void setup()
         {
                 pinMode(outPins[i], OUTPUT);
                 digitalWrite(outPins[i], LOW);
-        }}
+        }
+}
 
 void loop()
 {
@@ -48,8 +48,9 @@ void loop()
 }
 
 // Sync state on reconnect
-BLYNK_CONNECTED() {
-    Blynk.syncAll();
+BLYNK_CONNECTED()
+{
+        Blynk.syncAll();
 }
 
 // Update FW

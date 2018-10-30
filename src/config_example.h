@@ -20,11 +20,8 @@
 #define BME280_ADDR 0x76
 #endif
 
-#ifndef OUTPUT_PINS
-#define OUTPUT_PINS \
-    {               \
-        D1          \
-    }
+#ifndef TIMER_OUTPUT_PIN
+#define TIMER_OUTPUT_PIN D1
 #endif
 
 #ifndef BLYNK_AUTH

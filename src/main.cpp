@@ -1,12 +1,14 @@
 #include <Arduino.h>
 // Configuration
-#include <credentials.h>
-// copy src/credentials_example.h to src/credentials.h and put your data to the file
+#include <config.h>
+// copy src/config_example.h to src/credentials.h and put your data to the file
 
 #include <ESP8266WiFi.h>        // https://github.com/esp8266/Arduino
 #include <BlynkSimpleEsp8266.h> // https://github.com/blynkkk/blynk-library
-#include <ESP8266httpUpdate.h>  // https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266httpUpdate
-#include <Ticker.h>             // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
+#include <WidgetRTC.h>
+#include <TimeLib.h>           // https://github.com/PaulStoffregen/Time
+#include <ESP8266httpUpdate.h> // https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266httpUpdate
+#include <Ticker.h>            // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
 
 // Sensors
 #include <Wire.h>
@@ -18,19 +20,23 @@
 const char device_id[] = DEVICE_ID;
 const char fw_ver[] = FW_VERSION;
 
-const char outPins[] = OUTPUT_PINS;
+const char timerOutPin = TIMER_OUTPUT_PIN;
 
 bool shouldSendData{false};
 Ticker dataSender;
 
+// Timer
+uint8_t outControlType{1}; // 1 - auto, 2 - on, 3 - off
+bool shouldCheckTimer{false};
+bool disableTimer{false};
+Ticker timerChecker;
+WidgetRTC rtc;
+time_t startTime{7 * 3600};
+time_t stopTime{19 * 3600};
+int32_t tzOffset{3600};
+
 // Sensors
-
 Adafruit_BME280 bme;
-
-void setSendDataFlag()
-{
-        shouldSendData = true;
-}
 
 void sendData()
 {
@@ -48,10 +54,45 @@ void sendData()
 
         float airPressure{0};
         airPressure = bme.readPressure() / 100.0F;
+        Blynk.virtualWrite(V2, airPressure);
         DEBUG_SERIAL.print("Air Pressure (hPa): ");
         DEBUG_SERIAL.println(airPressure);
 
         shouldSendData = false;
+}
+
+void checkTimer()
+{
+        bool desiredTimerOutState{LOW};
+        if (outControlType == 1 && disableTimer == false)
+        {
+                time_t currentTime{now() % 86400 + tzOffset};
+
+                if (startTime > stopTime)
+                {
+                        if (currentTime > startTime)
+                        {
+                                desiredTimerOutState = HIGH;
+                        }
+                }
+                else
+                {
+                        if (currentTime > startTime && currentTime < stopTime)
+                        {
+                                desiredTimerOutState = HIGH;
+                        }
+                }
+        }
+        else
+        {
+                if (outControlType == 2)
+                {
+                        desiredTimerOutState = HIGH;
+                }
+        }
+
+        digitalWrite(timerOutPin, desiredTimerOutState);
+        shouldCheckTimer = false;
 }
 
 void scanI2C()
@@ -115,12 +156,9 @@ void setup()
 
         DEBUG_SERIAL.println("\nReady");
 
-        // Devices
-        for (uint8 i = 0; i <= 1; i++)
-        {
-                pinMode(outPins[i], OUTPUT);
-                digitalWrite(outPins[i], LOW);
-        }
+        // Timer controlled output
+        pinMode(timerOutPin, OUTPUT);
+        digitalWrite(timerOutPin, LOW);
 
         if (!bme.begin(BME280_ADDR))
         {
@@ -128,7 +166,8 @@ void setup()
         }
 
         // Timers;
-        dataSender.attach(5.0, setSendDataFlag);
+        dataSender.attach(5.0, [] { shouldSendData = true; });
+        timerChecker.attach(1.0, [] { shouldCheckTimer = true; });
 }
 
 void loop()
@@ -138,12 +177,43 @@ void loop()
         {
                 sendData();
         }
+
+        if (shouldCheckTimer)
+        {
+                checkTimer();
+        }
 }
 
 // Sync state on reconnect
 BLYNK_CONNECTED()
 {
         Blynk.syncAll();
+        rtc.begin();
+}
+
+// Timer
+BLYNK_WRITE(V10)
+{
+        TimeInputParam t(param);
+
+        if (t.hasStartTime())
+        {
+                startTime = t.getStart().getUnixOffset();
+        }
+
+        if (t.hasStopTime())
+        {
+                stopTime = t.getStop().getUnixOffset();
+        }
+
+        disableTimer = !(t.hasStartTime() && t.hasStopTime());
+
+        tzOffset = t.getTZ_Offset();
+}
+
+BLYNK_WRITE(V11)
+{
+        outControlType = param.asInt();
 }
 
 // Update FW

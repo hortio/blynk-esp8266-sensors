@@ -3,5 +3,5 @@
 .clang_complete
 .gcc-flags.json
 .piolibdeps
-src/credentials.h
+src/config.h
 .vscode

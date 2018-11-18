@@ -3,12 +3,12 @@
 #include <config.h>
 // copy src/config_example.h to src/credentials.h and put your data to the file
 
-#include <ESP8266WiFi.h>        // https://github.com/esp8266/Arduino
-#include <BlynkSimpleEsp8266.h> // https://github.com/blynkkk/blynk-library
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h> // https://github.com/blynkkk/blynk-library
 #include <WidgetRTC.h>
-#include <TimeLib.h>           // https://github.com/PaulStoffregen/Time
-#include <ESP8266httpUpdate.h> // https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266httpUpdate
-#include <Ticker.h>            // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
+#include <TimeLib.h> // https://github.com/PaulStoffregen/Time
+#include <Ticker.h>  // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
+                     // https://github.com/esp8266/Arduino/blob/master/libraries/Ticker
 
 // Sensors
 #include <Wire.h>
@@ -21,12 +21,14 @@ const char device_id[] = DEVICE_ID;
 const char fw_ver[] = FW_VERSION;
 
 const char timerOutPin = TIMER_OUTPUT_PIN;
+const char coolerOutPin = COOLER_OUTPUT_PIN;
 
 bool shouldSendData{false};
 Ticker dataSender;
 
 // Timer
-uint8_t outControlType{1}; // 1 - auto, 2 - on, 3 - off
+uint8_t outControlType{1}; // 1 - auto, 2 - manual
+uint16_t outManualValue{0};
 bool shouldCheckTimer{false};
 bool disableTimer{false};
 Ticker timerChecker;
@@ -63,7 +65,7 @@ void sendData()
 
 void checkTimer()
 {
-        bool desiredTimerOutState{LOW};
+        uint16_t desiredTimerOutState{0};
         if (outControlType == 1 && disableTimer == false)
         {
                 time_t currentTime{now() % 86400 + tzOffset};
@@ -72,14 +74,14 @@ void checkTimer()
                 {
                         if (currentTime > startTime)
                         {
-                                desiredTimerOutState = HIGH;
+                                desiredTimerOutState = outManualValue;
                         }
                 }
                 else
                 {
                         if (currentTime > startTime && currentTime < stopTime)
                         {
-                                desiredTimerOutState = HIGH;
+                                desiredTimerOutState = outManualValue;
                         }
                 }
         }
@@ -87,11 +89,13 @@ void checkTimer()
         {
                 if (outControlType == 2)
                 {
-                        desiredTimerOutState = HIGH;
+                        desiredTimerOutState = outManualValue;
                 }
         }
 
-        digitalWrite(timerOutPin, desiredTimerOutState);
+        sigmaDeltaWrite(0, desiredTimerOutState);
+        digitalWrite(coolerOutPin, desiredTimerOutState > COOLING_THRESHOLD);
+
         shouldCheckTimer = false;
 }
 
@@ -158,15 +162,27 @@ void setup()
 
         // Timer controlled output
         pinMode(timerOutPin, OUTPUT);
-        digitalWrite(timerOutPin, LOW);
+        sigmaDeltaSetup(0, 1220);
+        //attach pin 18 to channel 0
+        sigmaDeltaAttachPin(timerOutPin, 0);
+        //initialize channel 0 to off
+        sigmaDeltaWrite(0, 0);
+        pinMode(coolerOutPin, OUTPUT);
+        digitalWrite(coolerOutPin, 0);
 
-        if (!bme.begin(BME280_ADDR))
+        // Extra output
+        pinMode(EXTRA_OUTPUT, OUTPUT);
+        digitalWrite(EXTRA_OUTPUT, HIGH);
+
+        if (bme.begin(BME280_ADDR))
+        {
+                dataSender.attach(5.0, [] { shouldSendData = true; });
+        }
+        else
         {
                 DEBUG_SERIAL.println("BME280 not found");
         }
 
-        // Timers;
-        dataSender.attach(5.0, [] { shouldSendData = true; });
         timerChecker.attach(1.0, [] { shouldCheckTimer = true; });
 }
 
@@ -216,30 +232,7 @@ BLYNK_WRITE(V11)
         outControlType = param.asInt();
 }
 
-// Update FW
-BLYNK_WRITE(V22)
+BLYNK_WRITE(V12)
 {
-        if (param.asInt() == 1)
-        {
-                DEBUG_SERIAL.println("FW update request");
-
-                char full_version[34]{""};
-                strcat(full_version, device_id);
-                strcat(full_version, "::");
-                strcat(full_version, fw_ver);
-
-                t_httpUpdate_return ret = ESPhttpUpdate.update(FW_UPDATE_URL, full_version);
-                switch (ret)
-                {
-                case HTTP_UPDATE_FAILED:
-                        DEBUG_SERIAL.println("[update] Update failed.");
-                        break;
-                case HTTP_UPDATE_NO_UPDATES:
-                        DEBUG_SERIAL.println("[update] Update no Update.");
-                        break;
-                case HTTP_UPDATE_OK:
-                        DEBUG_SERIAL.println("[update] Update ok.");
-                        break;
-                }
-        }
+        outManualValue = param.asInt();
 }

@@ -21,7 +21,15 @@
 #endif
 
 #ifndef TIMER_OUTPUT_PIN
-#define TIMER_OUTPUT_PIN D1
+#define TIMER_OUTPUT_PIN 12
+#endif
+
+#ifndef COOLER_OUTPUT_PIN
+#define COOLER_OUTPUT_PIN 13
+#endif
+
+#ifndef COOLING_THRESHOLD
+#define COOLING_THRESHOLD 300
 #endif
 
 #ifndef BLYNK_AUTH
